@@ -15,6 +15,9 @@ type Task struct {
 	Title       string    `json:"title"`
 	Description string    `json:"description"`
 	Status      Status    `json:"status"`
+	// ScheduledAt is the date this task instance is scheduled for.
+	// Nil means the task has no specific scheduled date (one-off task).
+	ScheduledAt time.Time `json:"scheduled_at,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }

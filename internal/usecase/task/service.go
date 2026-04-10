@@ -90,6 +90,47 @@ func (s *Service) List(ctx context.Context) ([]taskdomain.Task, error) {
 	return s.repo.List(ctx)
 }
 
+func (s *Service) Generate(ctx context.Context, input GenerateInput) ([]taskdomain.Task, error) {
+	input.Title = strings.TrimSpace(input.Title)
+	input.Description = strings.TrimSpace(input.Description)
+
+	if input.Title == "" {
+		return nil, fmt.Errorf("%w: title is required", ErrInvalidInput)
+	}
+
+	if input.Status == "" {
+		input.Status = taskdomain.StatusNew
+	}
+
+	if !input.Status.Valid() {
+		return nil, fmt.Errorf("%w: invalid status", ErrInvalidInput)
+	}
+
+	dates, err := input.Recurrence.GenerateDates(input.StartDate, input.EndDate)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", ErrInvalidInput, err.Error())
+	}
+
+	if len(dates) == 0 {
+		return []taskdomain.Task{}, nil
+	}
+
+	now := s.now()
+	tasks := make([]*taskdomain.Task, 0, len(dates))
+	for _, d := range dates {
+		tasks = append(tasks, &taskdomain.Task{
+			Title:       input.Title,
+			Description: input.Description,
+			Status:      input.Status,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+			ScheduledAt: d,
+		})
+	}
+
+	return s.repo.CreateBatch(ctx, tasks)
+}
+
 func validateCreateInput(input CreateInput) (CreateInput, error) {
 	input.Title = strings.TrimSpace(input.Title)
 	input.Description = strings.TrimSpace(input.Description)

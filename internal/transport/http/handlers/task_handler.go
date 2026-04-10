@@ -3,8 +3,10 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gorilla/mux"
 
@@ -112,6 +114,66 @@ func (h *TaskHandler) List(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
+// Generate creates task instances from a recurrence rule within a date range.
+func (h *TaskHandler) Generate(w http.ResponseWriter, r *http.Request) {
+	var req generateTasksRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	startDate, err := parseDate(req.StartDate)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid start_date: %w", err))
+		return
+	}
+
+	endDate, err := parseDate(req.EndDate)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid end_date: %w", err))
+		return
+	}
+
+	// Convert DTO dates (strings) to time.Time for specific_dates type.
+	specificDates := make([]time.Time, 0, len(req.Recurrence.Dates))
+	for _, ds := range req.Recurrence.Dates {
+		d, err := parseDate(ds)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid date in dates list %q: %w", ds, err))
+			return
+		}
+		specificDates = append(specificDates, d)
+	}
+
+	input := taskusecase.GenerateInput{
+		Title:       req.Title,
+		Description: req.Description,
+		Status:      req.Status,
+		StartDate:   startDate,
+		EndDate:     endDate,
+		Recurrence: taskdomain.RecurrenceRule{
+			Type:       req.Recurrence.Type,
+			Interval:   req.Recurrence.Interval,
+			DayOfMonth: req.Recurrence.DayOfMonth,
+			Dates:      specificDates,
+			EvenDays:   req.Recurrence.EvenDays,
+		},
+	}
+
+	tasks, err := h.usecase.Generate(r.Context(), input)
+	if err != nil {
+		writeUsecaseError(w, err)
+		return
+	}
+
+	response := make([]taskDTO, 0, len(tasks))
+	for i := range tasks {
+		response = append(response, newTaskDTO(&tasks[i]))
+	}
+
+	writeJSON(w, http.StatusCreated, response)
+}
+
 func getIDFromRequest(r *http.Request) (int64, error) {
 	rawID := mux.Vars(r)["id"]
 	if rawID == "" {
@@ -163,4 +225,8 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.WriteHeader(status)
 
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func parseDate(s string) (time.Time, error) {
+	return time.Parse("2006-01-02", s)
 }

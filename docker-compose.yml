@@ -15,6 +15,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./migrations/0001_create_tasks.up.sql:/docker-entrypoint-initdb.d/001_create_tasks.sql:ro
+      - ./migrations/0002_add_recurrence.up.sql:/docker-entrypoint-initdb.d/002_add_recurrence.sql:ro
 
   app:
     build:

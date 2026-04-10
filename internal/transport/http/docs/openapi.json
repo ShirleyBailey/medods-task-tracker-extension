@@ -3,7 +3,7 @@
   "info": {
     "title": "Task Service API",
     "version": "1.0.0",
-    "description": "CRUD API for tasks built with clean architecture."
+    "description": "CRUD API for tasks with recurrence generation support."
   },
   "servers": [
     {
@@ -37,7 +37,7 @@
       },
       "post": {
         "tags": ["Tasks"],
-        "summary": "Create task",
+        "summary": "Create a single task",
         "requestBody": {
           "required": true,
           "content": {
@@ -52,6 +52,78 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/Task" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/api/v1/tasks/generate": {
+      "post": {
+        "tags": ["Tasks"],
+        "summary": "Generate recurring tasks",
+        "description": "Creates multiple task instances based on a recurrence rule within a date range. Returns all created tasks.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/GenerateTasksRequest" },
+              "examples": {
+                "daily": {
+                  "summary": "Every 2 days",
+                  "value": {
+                    "title": "Daily patient rounds",
+                    "description": "Check on all patients in ward B",
+                    "status": "new",
+                    "start_date": "2026-04-01",
+                    "end_date": "2026-04-30",
+                    "recurrence": { "type": "daily", "interval": 2 }
+                  }
+                },
+                "monthly": {
+                  "summary": "On the 15th of each month",
+                  "value": {
+                    "title": "Monthly inventory",
+                    "start_date": "2026-01-01",
+                    "end_date": "2026-12-31",
+                    "recurrence": { "type": "monthly", "day_of_month": 15 }
+                  }
+                },
+                "specific_dates": {
+                  "summary": "On specific dates only",
+                  "value": {
+                    "title": "Conference call",
+                    "start_date": "2026-04-01",
+                    "end_date": "2026-04-30",
+                    "recurrence": {
+                      "type": "specific_dates",
+                      "dates": ["2026-04-07", "2026-04-14", "2026-04-21"]
+                    }
+                  }
+                },
+                "even_odd": {
+                  "summary": "Every even day of the month",
+                  "value": {
+                    "title": "Reporting",
+                    "start_date": "2026-04-01",
+                    "end_date": "2026-04-30",
+                    "recurrence": { "type": "even_odd", "even_days": true }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "List of created task instances",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Task" }
+                }
               }
             }
           },
@@ -157,14 +229,8 @@
         "type": "object",
         "required": ["title"],
         "properties": {
-          "title": {
-            "type": "string",
-            "example": "Prepare release"
-          },
-          "description": {
-            "type": "string",
-            "example": "Collect release notes and check migrations"
-          },
+          "title": { "type": "string", "example": "Prepare release" },
+          "description": { "type": "string", "example": "Collect release notes" },
           "status": {
             "type": "string",
             "enum": ["new", "in_progress", "done"],
@@ -176,18 +242,73 @@
         "type": "object",
         "required": ["title", "status"],
         "properties": {
-          "title": {
-            "type": "string",
-            "example": "Prepare release"
-          },
-          "description": {
-            "type": "string",
-            "example": "Collect release notes and check migrations"
-          },
+          "title": { "type": "string", "example": "Prepare release" },
+          "description": { "type": "string" },
           "status": {
             "type": "string",
             "enum": ["new", "in_progress", "done"],
             "example": "in_progress"
+          }
+        }
+      },
+      "GenerateTasksRequest": {
+        "type": "object",
+        "required": ["title", "start_date", "end_date", "recurrence"],
+        "properties": {
+          "title": { "type": "string", "example": "Daily patient rounds" },
+          "description": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["new", "in_progress", "done"],
+            "default": "new"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "example": "2026-04-01",
+            "description": "Inclusive start of the generation window (YYYY-MM-DD)"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date",
+            "example": "2026-04-30",
+            "description": "Inclusive end of the generation window (YYYY-MM-DD)"
+          },
+          "recurrence": { "$ref": "#/components/schemas/RecurrenceRule" }
+        }
+      },
+      "RecurrenceRule": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["daily", "monthly", "specific_dates", "even_odd"],
+            "description": "Recurrence strategy"
+          },
+          "interval": {
+            "type": "integer",
+            "minimum": 1,
+            "example": 2,
+            "description": "Used with type=daily: repeat every N days"
+          },
+          "day_of_month": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30,
+            "example": 15,
+            "description": "Used with type=monthly: calendar day of the month"
+          },
+          "dates": {
+            "type": "array",
+            "items": { "type": "string", "format": "date" },
+            "example": ["2026-04-07", "2026-04-14"],
+            "description": "Used with type=specific_dates: explicit list of dates"
+          },
+          "even_days": {
+            "type": "boolean",
+            "example": true,
+            "description": "Used with type=even_odd: true = even calendar days, false = odd"
           }
         }
       },
@@ -196,14 +317,17 @@
         "properties": {
           "id": { "type": "integer", "format": "int64", "example": 1 },
           "title": { "type": "string", "example": "Prepare release" },
-          "description": {
-            "type": "string",
-            "example": "Collect release notes and check migrations"
-          },
+          "description": { "type": "string" },
           "status": {
             "type": "string",
             "enum": ["new", "in_progress", "done"],
             "example": "new"
+          },
+          "scheduled_at": {
+            "type": "string",
+            "format": "date",
+            "example": "2026-04-07",
+            "description": "The date this task instance is scheduled for (present only for recurring tasks)"
           },
           "created_at": {
             "type": "string",
