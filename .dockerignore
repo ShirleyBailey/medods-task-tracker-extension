@@ -1,0 +1,7 @@
+.git
+.idea
+.vscode
+bin
+tmp
+.DS_Store
+README.md
